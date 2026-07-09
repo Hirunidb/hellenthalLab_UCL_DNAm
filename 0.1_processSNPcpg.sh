@@ -1,8 +1,7 @@
 # filtering out SNPs with Minimum Allele Frequency (MAF) >= 0.01
 # SNP database downloaded from https://ftp.ensembl.org/pub/release-115/variation/gvf/homo_sapiens/1000GENOMES-phase_3.gvf.gz
 
-# cd "SAN/ghlab/epigen/Hiruni/"
-cd "/Users/hirunidb/Library/CloudStorage/OneDrive-Personal/Projects/Hellenthal-SilverLab_LIDo/hellenthalSilverLab_DNAm_pvt/metadata/"
+cd /path/to/folder/
 
 zcat 1000GENOMES-phase_3.gvf.gz   | awk -F'\t' '
     BEGIN { OFS="\t" }
