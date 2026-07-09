@@ -1,0 +1,428 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+author: "Hiruni Daas Bandara"
+---
+
+# 0.1 Dependencies
+
+```{r}
+setwd("/path/to/project/folder")
+
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+
+colanno <- read.csv('metadata/colanno27.csv', row.names=1)
+colPal <- c('#12436D', '#28A197', '#801650', '#F46A25', '#3D3D3D', '#A285D1', 'rosybrown4',  'slategray4')
+colPal_pie <- c('#12436D', '#28A197', 'slategray4', '#F46A25',  '#A285D1', 'rosybrown4', '#801650', '#3D3D3D')
+```
+# 0.2. Functions
+
+```{r}
+# aggregated matrix across the rows/cols; from an array/ list of matrices
+listToMeanF <- function(m2, rows, cols){
+  maxmat <- do.call(cbind, lapply(unique(cols), function(i){
+    do.call(rbind, lapply(unique(rows), function(j){
+      mean(m2[rows==j, cols==i,], na.rm=TRUE)
+    }))
+  }))
+  rownames(maxmat) <- unique(rows)
+  colnames(maxmat) <- unique(cols)
+  maxmat
+}
+
+# scaling for the maximum on a column
+scaleToMaxF <- function(mat){
+  mat/ rep(matrixStats::colMaxs(mat), each=nrow(mat))
+}
+
+# heatmap for column-scaled matrix
+meanHMplotF <- function(mat, title=NULL, row_groups=NULL, col_groups=NULL){
+  df <- melt(mat)
+  p <- ggplot(df, aes(x=Var2, y=Var1, fill = value)) +
+    geom_tile() +
+    geom_text(aes(label=round(value, 2)), color='red', size=3) +
+    ylab('True Cell Type') +
+    xlab('True Cell Type of Target Read') +
+    scale_fill_viridis_c(option = 'B', direction = -1) +
+    ggtitle(title) +
+    guides(fill = guide_legend(title = "Probability (scaled to max)")) +
+    theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 15),
+        axis.title = element_text(size = 18),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size=15),
+        plot.title = element_text(size = 20),
+        rect = element_rect(fill = 'transparent'))
+
+
+  if (!is.null(row_groups)) {
+    # row_groups = named vector or list giving group sizes in order
+    # e.g. c(GroupA = 3, GroupB = 4, GroupC = 2)
+      breaks <- cumsum(row_groups[-length(row_groups)]) + 0.5
+      p <- p + geom_hline(yintercept = breaks, color = "white", linewidth = 0.7)
+    }
+    
+  # Add vertical separators between column groups
+    if (!is.null(col_groups)) {
+      breaks <- cumsum(col_groups[-length(col_groups)]) + 0.5
+      p <- p + geom_vline(xintercept = breaks, color = "white", linewidth = 0.7)
+    }
+  p
+}
+
+
+```
+
+
+# 1. Averaged performance of model
+## 1.1 Comparison of target and reference reads (Step 3)
+
+```{r}
+# output
+prodArr <- readRDS('output/2_prodArr_p49.rds')
+prodArr1 <- readRDS('output/2_prodArr_p51.rds')
+prodArr2 <- readRDS('output/2_prodArr_p54.rds')
+
+# re-labeling
+ctLabels <- c(paste(c(rep("T-CD4", 2), rep('T-CD8', 4)), c(5,6,1,2,3,4), sep='_'), colnames(prodArr)[7:30])
+ctLabels_new <- paste0(stringr::str_split_i(ctLabels, '_', 1), '_', seq(1:30))
+targetCT <- stringr::str_split_i(ctLabels, '_', 1)
+
+
+mat_prod_list <- lapply(list(prodArr, prodArr1, prodArr2), function (arr){
+    listToMeanF(arr, rownames(arr), colnames(arr))
+})
+matProdMean <- apply(simplify2array(mat_prod_list), c(1,2), mean)
+scaledMean <- scaleToMaxF(matProdMean)[,ctLabels]
+rownames(scaledMean) <- stringr::str_split_i(rownames(scaledMean), '_', 1)
+colnames(scaledMean) <- ctLabels_new
+
+# plot (Fig1.B)
+meanHMplotF(scaledMean, col_groups = table(targetCT)[unique(targetCT)])
+```
+
+## 1.2 Reference prior (Step 2)
+
+```{r}
+refPriorWeights <- readRDS('output/2.1_localWeightsArr_perSubCT_rowColNorm_10kb.rds')
+sctype_ref_mod <- c('T-CD4', 'T-CD8', 'T-CD4', unique(colanno[, 'stype'])[4:9])
+sctype_ref <- rep(sctype_ref_mod, each=3)
+mat_ref <- listToMeanF(refPriorWeights, sctype_ref, colnames(refPriorWeights))
+
+# plot (Fig1.C)
+meanHMplotF(scaleToMaxF(mat_ref))
+```
+
+## 1.3 Weighted output (Step 1)
+
+```{r}
+eq2 <- readRDS('output/3_weightedProdEQ2/weightedProd_6CT_p49_10kb.rds')
+eq2.1 <- readRDS('output/3_weightedProdEQ2/weightedProd_6CT_p51_10kb.rds')
+eq2.2 <- readRDS('output/3_weightedProdEQ2/weightedProd_6CT_p54_10kb.rds')
+
+mat_eq2_list <- lapply(list(eq2, eq2.1, eq2.2), function(arr){
+  listToMeanF(arr,  rownames(eq2), colnames(eq2))
+})
+
+meanEq2 <- apply(simplify2array(mat_eq2_list), c(1,2), mean)
+meanEq2 <- meanEq2[,ctLabels]
+colnames(meanEq2) <- ctLabels_new
+
+# plot (Fig1.D)
+meanHMplotF(scaleToMaxF(meanEq2), col_groups = table(targetCT)[unique(targetCT)])
+```
+
+# 2. Performance analysis
+## 2.1 CT proportions
+
+```{r}
+eq2 <- readRDS('output/3_weightedProdEQ2/weightedProd_6CT_p49_10kb.rds')
+cts <- stringr::str_split_i(colnames(eq2), '_', 1)
+
+ctProb <- data.frame(table(cts)/length(cts) )
+ctProb['Freq'] <- c(0.03, 0.44, 0.13, 0.20, 0.07, 0.13)
+ctProb['Classification'] <- 'multi'
+binary <- data.frame(
+  'cts' = c('Lymphoid', 'Myeloid'),
+  'Freq' = c(0.44, 0.56),
+  'Classification' = 'binary'
+)
+meta <- rbind(ctProb, binary)
+
+# plot (Fig2.A)
+ggplot(meta, aes(x=Classification, y=Freq, fill=cts)) +
+  geom_col() +
+  coord_polar(theta = 'y') +
+  scale_fill_manual(values = colPal_pie) +
+  geom_text(label='0.38', x=1, y=0.76, size=4) +
+  geom_text(label='0.62', x=0.2, y=0.8, size=4) +
+  geom_text(data=subset(meta, Classification=='multi'), aes(label=as.character(Freq), x=Classification,  y=Freq), position = position_stack(vjust = 0.5), size=4)+
+  ggtitle('Simulated Read Proportions by CT') +
+  theme(
+    axis.title=element_blank(),
+    axis.ticks=element_blank(),
+    axis.text=element_blank(),
+    legend.title = element_text(size=15),
+    legend.text = element_text(size=15),
+    plot.title = element_text(size = 20),
+    rect = element_rect(fill = 'transparent'),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key = element_rect(fill = "white", color = NA)
+  )
+    
+```
+
+## 2.2 Threshold variation in probability margin
+
+```{r}
+data <- readRDS('output/4_weightedProdEQ2_6CT_confMat_10kb.rds')
+
+cols <- colnames(data)[3:ncol(data)]
+df <- as.data.frame(data) %>%
+  mutate(across(all_of(cols), as.numeric)) 
+
+# global mean
+dfs <- split(df[,c(2:ncol(df))], df$pId)
+cls <- unique(df$Class)
+
+threshList <- lapply(dfs, function(i) {
+  i <- dfs[[1]]
+  if (length(cls)==2){ # binary
+    sub <- i[i$Class == 'Lymphoid',]
+    
+    sapply(unique(i$Threshold), function(t) {
+      mat <- sub[sub$Threshold==t, c(3:6)]
+      mat <- mat/ rowSums(mat)
+      (mat[,'TP'] + mat[,'TN']) / rowSums(mat)
+    }, simplify = T)
+    
+  } else {# multiclass
+    
+    sapply(unique(i$Threshold), function(t) {
+      mat <- i[i$Threshold==t, c(3:6)]
+      mat <- mat/ rowSums(mat)
+      sum(mat[,'TP']) / sum(mat[,c('TP', 'FN')])
+    }, simplify = T)
+  }
+})
+
+meanThresh <- rowMeans(matrix(unlist(threshList), ncol=3))
+drop <- lapply(dfs, function(i){
+  i[i$Class==cls[1], 'Dropout']
+})
+dropMeans <- rowMeans(matrix(unlist(drop), ncol=3))
+
+
+dfplot <- data.frame(
+  "Accuracy" = meanThresh,
+  'Threshold' = unique(df$Threshold),
+  'Dropout' = dropMeans
+)
+
+df_plot_sub <- filter(df_plot, Class=='All')
+
+# plot (Fig2.B)
+ggplot(data = df_plot_sub, aes(x=Threshold, y=Percent_Accuracy, fill = Category))+
+  geom_bar(data = subset(df_plot_sub, Category!='Dropout'), position = 'fill', stat='identity') +
+  geom_line(data = subset(df_plot_sub, Category=='Dropout'), linetype='dashed', colour='brown4', linewidth=0.8, alpha=0.8) +
+  annotate('text', label='Dropout', x=1.2, y=0.03, size=5, color='brown4') +
+  scale_x_continuous(breaks = unique(df_plot_sub$Threshold)) +
+  ylab('Proportion of Reads') +
+  coord_cartesian(clip = "off") +
+  #scale_fill_viridis_d(option='cividis') +
+  scale_fill_manual(values= c('Correct' = '#1a305e', 'Wrong'= 'gray40'))+
+  #scale_fill_brewer(palette = 'PuBuGn') + #
+  geom_hline(yintercept = 1/6, alpha=0.8, linewidth=0.8) +
+  annotate('text', x=1.3, y=0.2, label='Random guessing', size=5) +
+  ggtitle('Classification Accuracy against Read Dropout') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 15),
+        axis.title = element_text(size = 18),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size=15),
+        plot.title = element_text(size = 20),
+        rect = element_rect(fill = 'transparent'))
+
+```
+
+## 2.3 Read Classification Accuracy
+
+```{r}
+data <- readRDS('output/4_weightedProdEQ2_6CT_confMat_10kb.rds')
+
+cols <- colnames(data)[3:ncol(data)]
+df <- as.data.frame(data) %>%
+  mutate(across(all_of(cols), as.numeric)) 
+
+# global mean
+dfs <- split(df[,c(2:ncol(df))], df$pId)
+cls <- unique(df$Class)
+
+metrics <- sapply(dfs, function(i){
+  mat <- i[i$Threshold == 1,]
+  if (length(cls)==2){ # binary
+    sub <- mat[mat$Class == 'Lymphoid', c(3:6)]
+    sub <- sub/ rowSums(sub)
+    acc <- (sub[,'TP'] + sub[,'TN']) / rowSums(sub)
+    
+  } else{# multiclass
+    mat <- mat[,c(3:6)]
+    mat <- mat/ rowSums(mat)
+    acc <- sum(mat[,'TP']) / sum(mat[,c('TP', 'FN')])
+  }
+  precision <- mat[,'TP'] / (mat[,'TP'] + mat[,'FP'])
+  recall <- mat[,'TP'] / (mat[,'TP'] + mat[,'FN'])
+  f1 <- (2*precision*recall) / (precision+recall)
+
+  c(acc, precision, recall, f1)
+})
+accMean <- rowMeans(metrics)
+metric <- c('Accuracy', rep(c('Precision', 'Recall', 'F1'), each=length(cls)))
+
+dfplot <- data.frame(
+  'Metric'= metric,
+  'Class' = c('Overall', rep(cls, 3)),
+  'Value' = accMean*100
+  )
+dfplot$Class <- factor(dfplot$Class, levels = c(cls, 'Overall')) 
+
+# plot (Fig2.C/D)
+ggplot(subset(dfplot, Metric %in% c('Accuracy', 'Recall')), aes(x=Class, y=Value, fill=Metric)) +
+  geom_bar(stat='identity',
+           position = position_dodge2(width = 0.9, preserve = "single"))+
+  geom_hline(yintercept = 1/6*100, alpha=0.8, linewidth=0.8, linetype='dashed', color='black') +
+  annotate('text', x=8, y=19, label='Random guessing', size=5) +
+## For lymphoid vs myeloid:
+  # geom_hline(yintercept = 1/2*100, alpha=0.8, linewidth=0.8, linetype='dashed', color='black') +
+  # annotate('text', x=3.9, y=53, label='Random guessing', size=5) +
+  scale_fill_manual(values= colPal[1:2]) +
+  ylab('Percentage') +
+  coord_cartesian(clip = "off") +
+  ggtitle('Classification Performance of 10kb Reads (6CT)') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 15), 
+        axis.title = element_text(size = 18),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size=15),
+        plot.title = element_text(size = 20),
+        legend.position = 'top',
+        rect = element_rect(fill = 'transparent'))
+
+```
+
+
+# 3. Classification Accuracy across the Genome
+## 3.1 Performance at 6CT and 2CT classification
+
+```{r}
+data <- readRDS('output/4_weightedProdEQ2_genome_6CT_stats.rds')
+threshold <- 1
+
+cols <- colnames(data)[3:ncol(data)]
+df <- as.data.frame(data) %>%
+  mutate(across(all_of(cols), as.numeric))
+
+# global mean
+dfs <- split(df[,c(2:ncol(df))], df$pId)
+
+threshArr <-lapply(dfs, function(i) {
+  sub <- i[i$Threshold==threshold,]
+  sub[,5:ncol(sub)] <- sub[,5:ncol(sub)] / sub[,4]
+})
+meanMats <- Reduce('+', threshArr) / length(threshArr)
+
+meta <- dfs[[1]][dfs[[1]]$Threshold==threshold, c(1:4)]
+percentData <- bind_cols(meta, meanMats) 
+dfplot <- percentData %>%
+  mutate(Threshold=as.character(Threshold)) %>%
+  tidyr::pivot_longer(c(5:ncol(percentData)), names_to = 'Min_accuracy', values_to='Window_prop')
+
+dfplot$Min_accuracy <- factor(dfplot$Min_accuracy, levels=c('Null', setdiff(dfplot$Min_accuracy, 'Null')))
+dfplot$Class <- factor(dfplot$Class, levels = unique(dfplot$Class))
+
+# plot (Fig3.A/B)
+ggplot(data = dfplot, aes(x=Min_accuracy, 
+                                y=Window_prop, colour = Class, group=Class))+
+  geom_line(linewidth=1.1, alpha=0.6) +
+  xlab('Recall of a given 10kb Region (<) ') +
+  ylab('Proportion of Autosomal Genome') +
+  ggtitle('Cell Type Recall over the Genome') +
+  scale_colour_manual(values=c('goldenrod3', colPal[c(3,5)])) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 15),
+        axis.title = element_text(size = 18),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size=15),
+        plot.title = element_text(size = 20),
+        rect = element_rect(fill = 'transparent'))
+
+```
+
+## 3.2 Read size comparison
+
+```{r}
+acc_genome_10 <- readRDS('output/4_weightedProdEQ2_genome_LymMyl_stats.rds')
+acc_genome_15 <- readRDS('output/4_weightedProdEQ2_genome_LymMyl_stats_15kb.rds')
+acc_genome_20 <- readRDS('output/4_weightedProdEQ2_genome_LymMyl_stats_20kb.rds')
+
+genomeList <- list(acc_genome_10, acc_genome_15, acc_genome_20)
+strLen <- c('10', '15', '20')
+meanStr <- list()
+for (i in seq(length(genomeList))) {
+  data <- genomeList[[i]]
+
+  cols <- colnames(data)[3:ncol(data)]
+  df <- as.data.frame(data) %>%
+    mutate(across(all_of(cols), as.numeric)) %>%
+    filter(Threshold==1) 
+  
+  # global mean
+  dfs <- split(df[,c(2:ncol(df))], df$pId)
+  
+  matlist <- lapply(dfs, function(sub){
+    sub[,5:ncol(sub)] <- sub[,5:ncol(sub)] / sub[,4]
+  })
+
+  meanMats <- Reduce('+', matlist) / length(matlist)
+  
+  sdMat <- sapply(matlist, function(mat){mat[,'0.9']}, simplify = T)
+  sdMat <- apply(sdMat, 1, sd)
+  meanMats <- dfs[[1]] %>%
+    select(Class, Total_nslices_left) %>%
+    mutate('strLen'= strLen[i]) %>%
+    mutate('sd' = sdMat) %>%
+    bind_cols(meanMats) 
+  meanStr[[i]] <- meanMats
+}
+
+meanStrAll <- do.call(rbind, meanStr)
+
+dfplot <- meanStrAll %>%
+  select(c(1,3,4,15)) %>%
+  rename('Read Length' = strLen)
+
+# plot (Fig3.C)
+ggplot(dfplot, aes(x=Class, y=`0.9`, group=`Read Length`, fill=`Read Length`)) +
+  geom_bar(position = 'dodge', stat='identity') +
+  scale_fill_brewer(palette = 'Paired') +
+  ggtitle('Classification Recall (>0.9) & Read Length') +
+  ylab('Proportion of Regions (Recall > 0.9) ') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 15),
+        axis.title = element_text(size = 18),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size=15),
+        plot.title = element_text(size = 20),
+        rect = element_rect(fill = 'transparent'))
+
+```
+

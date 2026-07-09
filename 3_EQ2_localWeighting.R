@@ -82,10 +82,12 @@ for (cls in seq(length(clsType))) {
       refPriorWeights[,,j] <- weightMat
     }
     
+    saveRDS(refPriorWeights, paste0('output/2.1_localWeightsArr_perSubCT_rowColNorm_', strLens[i], 'kb.rds'))
+    
     info <- apply(refPriorWeights, 3, colSums)
     ind <- which(apply(info, 2, function(x) all(x==0)))
     refPriorWeights <- refPriorWeights[,,-ind] # 190 removed
-    saveRDS(ind, paste0('output/3_allZeroRemovedSliceInd_', strLens[i], 'kb.rds'))
+    saveRDS(ind, paste0('output/2.2_allZeroRemovedSliceInd_', strLens[i], 'kb.rds'))
     
     ######EQ2
     testArrs <- unlist(test[i])
