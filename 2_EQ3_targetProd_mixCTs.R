@@ -88,7 +88,7 @@ prod_allchr <- lapply(chr ,function(n){
 })
 
 prod_allchrArr <- simplify2array(unlist(prod_allchr, recursive=FALSE))
-saveRDS(prod_allchrArr, 'output/8_prodArr_p49.rds')
+saveRDS(prod_allchrArr, 'output/2_prodArr_p49.rds')
 
 write.csv(data.frame(
   'cellType'= ctype[patientData==patient], 

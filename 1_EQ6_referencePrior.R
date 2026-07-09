@@ -55,7 +55,7 @@ prod_allchr <- lapply(chr ,function(n){
 
 refPriorWeights <- simplify2array(unlist(prod_allchr, recursive=FALSE))
 
-saveRDS(prodArr, 'output/7.1_referenceProdArr_prop_norm.rds')
+saveRDS(prodArr, 'output/1_referenceProdArr_prop_norm.rds')
 
 
 
