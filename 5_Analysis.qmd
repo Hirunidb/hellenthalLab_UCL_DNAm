@@ -18,6 +18,7 @@ colanno <- read.csv('metadata/colanno27.csv', row.names=1)
 colPal <- c('#12436D', '#28A197', '#801650', '#F46A25', '#3D3D3D', '#A285D1', 'rosybrown4',  'slategray4')
 colPal_pie <- c('#12436D', '#28A197', 'slategray4', '#F46A25',  '#A285D1', 'rosybrown4', '#801650', '#3D3D3D')
 ```
+
 # 0.2. Functions
 
 ```{r}
@@ -76,8 +77,8 @@ meanHMplotF <- function(mat, title=NULL, row_groups=NULL, col_groups=NULL){
 
 ```
 
-
 # 1. Averaged performance of model
+
 ## 1.1 Comparison of target and reference reads (Step 3)
 
 ```{r}
@@ -136,6 +137,7 @@ meanHMplotF(scaleToMaxF(meanEq2), col_groups = table(targetCT)[unique(targetCT)]
 ```
 
 # 2. Performance analysis
+
 ## 2.1 CT proportions
 
 ```{r}
@@ -293,7 +295,7 @@ dfplot <- data.frame(
 dfplot$Class <- factor(dfplot$Class, levels = c(cls, 'Overall')) 
 
 # plot (Fig2.C/D)
-ggplot(subset(dfplot, Metric %in% c('Accuracy', 'Recall')), aes(x=Class, y=Value, fill=Metric)) +
+ggplot(dfplot, aes(x=Class, y=Value, fill=Metric)) +
   geom_bar(stat='identity',
            position = position_dodge2(width = 0.9, preserve = "single"))+
   geom_hline(yintercept = 1/6*100, alpha=0.8, linewidth=0.8, linetype='dashed', color='black') +
@@ -301,24 +303,23 @@ ggplot(subset(dfplot, Metric %in% c('Accuracy', 'Recall')), aes(x=Class, y=Value
 ## For lymphoid vs myeloid:
   # geom_hline(yintercept = 1/2*100, alpha=0.8, linewidth=0.8, linetype='dashed', color='black') +
   # annotate('text', x=3.9, y=53, label='Random guessing', size=5) +
-  scale_fill_manual(values= colPal[1:2]) +
+  scale_fill_viridis_d(option='cividis') +
   ylab('Percentage') +
   coord_cartesian(clip = "off") +
   ggtitle('Classification Performance of 10kb Reads (6CT)') +
   theme_minimal() +
   theme(axis.text.x = element_text(size = 15, angle = 270, vjust = 1, hjust=1),
-        axis.text.y = element_text(size = 15), 
+        axis.text.y = element_text(size = 15),
         axis.title = element_text(size = 18),
         legend.title = element_text(size=15),
         legend.text = element_text(size=15),
         plot.title = element_text(size = 20),
-        legend.position = 'top',
         rect = element_rect(fill = 'transparent'))
 
 ```
 
-
 # 3. Classification Accuracy across the Genome
+
 ## 3.1 Performance at 6CT and 2CT classification
 
 ```{r}
@@ -425,4 +426,3 @@ ggplot(dfplot, aes(x=Class, y=`0.9`, group=`Read Length`, fill=`Read Length`)) +
         rect = element_rect(fill = 'transparent'))
 
 ```
-
